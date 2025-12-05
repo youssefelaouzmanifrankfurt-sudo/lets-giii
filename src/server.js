@@ -15,19 +15,21 @@ const logger = require('./utils/logger');
 // --- INIT ---
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
+const io = socketIo(server, {
+    cors: {
+        origin: "*", // Erlaubt Zugriff von allen Geräten im LAN
+        methods: ["GET", "POST"]
+    }
+});
 
 // --- SETUP ---
 // 1. Logger mit IO verbinden
 logger.init(io);
 
-// 2. Globale Variablen Init
-global.adsDB = []; 
-
-// 3. Express Konfiguration laden (Middleware & Routes)
+// 2. Express Konfiguration laden (Middleware & Routes)
 configureExpress(app);
 
-// 4. Socket Manager starten
+// 3. Socket Manager starten
 socketManager(io);
 
 // --- SERVER START ---
@@ -44,12 +46,20 @@ const getLocalIP = () => {
     return 'localhost';
 };
 
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', async () => {
     console.clear();
+    const localIP = getLocalIP();
     console.log('--------------------------------------------------');
-    console.log(`🚀 SERVER GESTARTET: http://${getLocalIP()}:${PORT}`);
+    console.log(`🚀 LAN SERVER GESTARTET`);
+    console.log(`📡 Local:   http://localhost:${PORT}`);
+    console.log(`📡 Network: http://${localIP}:${PORT}`);
     console.log('--------------------------------------------------');
     
-    // Boot-Prozess anstoßen (DB laden, Browser, etc.)
-    bootService.startSystem(io, PORT);
+    try {
+        // Boot-Prozess anstoßen (DB laden, Browser, etc.)
+        await bootService.startSystem(io, PORT);
+        logger.log('success', 'System Boot abgeschlossen.');
+    } catch (err) {
+        logger.log('error', `System Boot Fehler: ${err.message}`);
+    }
 });

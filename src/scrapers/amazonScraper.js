@@ -4,9 +4,32 @@ const logger = require('../utils/logger');
 
 const randomSleep = (min, max) => new Promise(r => setTimeout(r, Math.floor(Math.random() * (max - min + 1) + min)));
 
+// Helper zur Preis-Extraktion
+function parsePrice(item) {
+    try {
+        const whole = item.querySelector('.a-price-whole');
+        const fraction = item.querySelector('.a-price-fraction');
+        
+        if (whole && fraction) {
+            return whole.innerText.replace('.', '') + "," + fraction.innerText; 
+        } 
+        
+        const offscreen = item.querySelector('.a-price .a-offscreen');
+        if (offscreen) {
+            return offscreen.innerText.replace('€', '').replace('.', '').trim(); 
+        }
+    } catch (e) {
+        return "0";
+    }
+    return "0";
+}
+
 async function searchAmazon(query, pageNum = 1) {
     const browser = await getBrowser();
-    if (!browser) return [];
+    if (!browser) {
+        logger.log('error', 'Amazon Scraper: Kein Browser verfügbar.');
+        return [];
+    }
     
     const page = await browser.newPage();
     
@@ -14,8 +37,10 @@ async function searchAmazon(query, pageNum = 1) {
         await page.setViewport({ width: 1366, height: 768 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
-        await page.goto(`https://www.amazon.de/s?k=${encodeURIComponent(query)}&page=${pageNum}`, { waitUntil: 'domcontentloaded' });
+        const searchUrl = `https://www.amazon.de/s?k=${encodeURIComponent(query)}&page=${pageNum}`;
+        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
         
+        // Cookie Banner wegklicken (Silent catch)
         try { 
             const cookieBtn = await page.waitForSelector('#sp-cc-accept', {timeout: 2000}); 
             if(cookieBtn) await cookieBtn.click();
@@ -28,34 +53,36 @@ async function searchAmazon(query, pageNum = 1) {
             const data = [];
             
             items.forEach(item => {
-                const titleEl = item.querySelector('h2 span');
-                const linkEl = item.querySelector('div[data-cy="title-recipe"] a') || item.querySelector('h2 a');
-                const imgEl = item.querySelector('img.s-image');
-                
-                let price = "0";
-                const whole = item.querySelector('.a-price-whole');
-                const fraction = item.querySelector('.a-price-fraction');
-                
-                if (whole && fraction) {
-                    price = whole.innerText.replace('.', '') + "," + fraction.innerText; 
-                } else {
-                    const offscreen = item.querySelector('.a-price .a-offscreen');
-                    if (offscreen) {
-                        price = offscreen.innerText.replace('€', '').replace('.', '').trim(); 
-                    }
-                }
-
-                if (titleEl && linkEl) {
-                    let link = linkEl.href;
-                    if(!link.startsWith('http')) link = 'https://www.amazon.de' + link;
+                try {
+                    const titleEl = item.querySelector('h2 span');
+                    const linkEl = item.querySelector('div[data-cy="title-recipe"] a') || item.querySelector('h2 a');
+                    const imgEl = item.querySelector('img.s-image');
                     
-                    data.push({
-                        title: titleEl.innerText.trim(),
-                        price: price, 
-                        img: imgEl ? imgEl.src : '',
-                        url: link,
-                        source: 'Amazon'
-                    });
+                    // Preis Logik inline wiederverwendet (da evaluate keinen Zugriff auf externe functions hat)
+                    let price = "0";
+                    const whole = item.querySelector('.a-price-whole');
+                    const fraction = item.querySelector('.a-price-fraction');
+                    if (whole && fraction) {
+                        price = whole.innerText.replace('.', '') + "," + fraction.innerText; 
+                    } else {
+                        const offscreen = item.querySelector('.a-price .a-offscreen');
+                        if (offscreen) price = offscreen.innerText.replace('€', '').replace('.', '').trim(); 
+                    }
+
+                    if (titleEl && linkEl) {
+                        let link = linkEl.href;
+                        if(!link.startsWith('http')) link = 'https://www.amazon.de' + link;
+                        
+                        data.push({
+                            title: titleEl.innerText.trim(),
+                            price: price, 
+                            img: imgEl ? imgEl.src : '',
+                            url: link,
+                            source: 'Amazon'
+                        });
+                    }
+                } catch (err) {
+                    // Skip broken item
                 }
             });
             return data;
@@ -63,7 +90,9 @@ async function searchAmazon(query, pageNum = 1) {
         
         await page.close();
         return results;
+
     } catch(e) { 
+        logger.log('error', `Amazon Search Fehler (${query}): ${e.message}`);
         if(!page.isClosed()) await page.close();
         return []; 
     }
@@ -77,17 +106,16 @@ async function scrapeAmazonDetails(url) {
         await page.setViewport({ width: 1400, height: 900 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
     
-        await page.goto(url, { waitUntil: 'domcontentloaded' });
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
         await randomSleep(1500, 3000); 
 
         // --- ENERGIELABEL SUCHE ---
         let energyLabelUrl = "Unbekannt";
         try {
-            // Verschiedene Selektoren probieren
             const badgeSelectors = [
                 '.s-energy-efficiency-badge-standard', 
                 'svg[class*="energy-efficiency"]',
-                '#energyEfficiencyLabel_feature_div img', // Manchmal direkt da
+                '#energyEfficiencyLabel_feature_div img', 
                 'a[href*="energy_efficiency"]'
             ];
             
@@ -98,12 +126,10 @@ async function scrapeAmazonDetails(url) {
             }
 
             if (badge) {
-                // Prüfen ob es direkt ein Bild ist
                 const isImg = await page.evaluate(el => el.tagName === 'IMG', badge);
                 if(isImg) {
                     energyLabelUrl = await page.evaluate(el => el.src, badge);
                 } else {
-                    // Sonst klicken für Popover
                     await badge.click();
                     await randomSleep(1000, 2000); 
                     energyLabelUrl = await page.evaluate(() => {
@@ -113,12 +139,14 @@ async function scrapeAmazonDetails(url) {
                 }
             }
         } catch(e) {
-            logger.log('warning', "Amazon E-Label Fehler: " + e.message);
+            // Warnung ist okay, nicht kritisch
+            // logger.log('warning', "Amazon E-Label Fehler: " + e.message);
         }
 
         const details = await page.evaluate((eLabel) => {
-            const title = document.querySelector('#productTitle')?.innerText.trim();
-            if (!title) return null;
+            const titleEl = document.querySelector('#productTitle');
+            if (!titleEl) return null;
+            const title = titleEl.innerText.trim();
             
             let price = '';
             const whole = document.querySelector('.a-price-whole');
@@ -131,20 +159,28 @@ async function scrapeAmazonDetails(url) {
                  if(pEl) price = pEl.innerText.replace('€','').replace('.', '').trim();
             }
 
-            const bullets = Array.from(document.querySelectorAll('#feature-bullets li span')).map(el => el.innerText.trim()).join('\n');
+            // Bullet Points robuster sammeln
+            const bullets = Array.from(document.querySelectorAll('#feature-bullets li span'))
+                .map(el => el.innerText.trim())
+                .filter(text => text.length > 0)
+                .join('\n');
             
+            // Bilder
             const images = [];
             const imgContainer = document.querySelector('#imgTagWrapperId img');
             if(imgContainer) {
                 const dyn = imgContainer.getAttribute('data-a-dynamic-image');
                 if(dyn) {
-                    const urls = JSON.parse(dyn);
-                    Object.keys(urls).forEach(u => images.push(u));
+                    try {
+                        const urls = JSON.parse(dyn);
+                        Object.keys(urls).forEach(u => images.push(u));
+                    } catch(e) { images.push(imgContainer.src); }
                 } else {
                     images.push(imgContainer.src);
                 }
             }
 
+            // Tech Specs
             const techData = [];
             document.querySelectorAll('#productDetails_techSpec_section_1 tr').forEach(r => {
                 const k = r.querySelector('th')?.innerText.trim();
@@ -160,11 +196,10 @@ async function scrapeAmazonDetails(url) {
             };
         }, energyLabelUrl);
 
-        // --- ENERGIELABEL EINFÜGEN (Position 2) ---
+        // --- ENERGIELABEL EINFÜGEN ---
         if (details && energyLabelUrl !== "Unbekannt") {
             if (!details.images.includes(energyLabelUrl)) {
                 if (details.images.length > 0) {
-                    // Als 2. Bild einfügen
                     details.images.splice(1, 0, energyLabelUrl);
                 } else {
                     details.images.push(energyLabelUrl);
@@ -175,6 +210,7 @@ async function scrapeAmazonDetails(url) {
         await page.close();
         return details;
     } catch(e) { 
+        logger.log('error', `Amazon Details Scrape Fehler: ${e.message}`);
         if(!page.isClosed()) await page.close();
         return null; 
     }
