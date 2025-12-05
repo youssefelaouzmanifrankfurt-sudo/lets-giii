@@ -1,31 +1,53 @@
 // src/utils/logger.js
-let ioRef = null;
+const fs = require('fs');
+const path = require('path');
 
-// Diese Funktion wird einmal beim Start aufgerufen, um die Verbindung zu speichern
-function init(io) {
-    ioRef = io;
+let ioInstance = null;
+
+// Log Verzeichnis erstellen
+const logDir = path.join(process.cwd(), 'logs');
+if (!fs.existsSync(logDir)) {
+    try { fs.mkdirSync(logDir); } catch(e) {}
 }
 
-/**
- * Sendet eine Nachricht an das Frontend und die Konsole
- * @param {string} type - Art der Nachricht: 'info', 'success', 'error', 'warning'
- * @param {string} message - Der Text
- */
-function log(type, message) {
-    const timestamp = new Date().toLocaleTimeString();
-    const fullMessage = `[${timestamp}] [${type.toUpperCase()}] ${message}`;
+const logFile = path.join(logDir, 'server.log');
 
-    // 1. In die schwarze Server-Konsole schreiben
-    console.log(fullMessage);
+module.exports = {
+    init: (io) => {
+        ioInstance = io;
+    },
 
-    // 2. An alle Browser im LAN senden (Echtzeit!)
-    if (ioRef) {
-        ioRef.emit('server-log', {
-            time: timestamp,
-            type: type,
-            msg: message
-        });
+    log: (type, message) => {
+        // 1. Console Output mit Zeitstempel
+        const timestamp = new Date().toLocaleTimeString('de-DE');
+        const date = new Date().toLocaleDateString('de-DE');
+        
+        let color = '';
+        let prefix = '';
+
+        switch (type) {
+            case 'info':    color = '\x1b[36m'; prefix = 'ℹ️'; break; // Cyan
+            case 'success': color = '\x1b[32m'; prefix = '✅'; break; // Green
+            case 'warning': color = '\x1b[33m'; prefix = '⚠️'; break; // Yellow
+            case 'error':   color = '\x1b[31m'; prefix = '❌'; break; // Red
+            default:        color = '\x1b[37m'; prefix = '📝'; break; // White
+        }
+
+        const consoleMsg = `${color}[${timestamp}] ${prefix} ${message}\x1b[0m`;
+        console.log(consoleMsg);
+
+        // 2. File Logging
+        try {
+            const fileMsg = `[${date} ${timestamp}] [${type.toUpperCase()}] ${message}\n`;
+            fs.appendFileSync(logFile, fileMsg);
+        } catch (e) {
+            console.error("Kann nicht in Logfile schreiben:", e);
+        }
+
+        // 3. Socket Emit
+        if (ioInstance) {
+            ioInstance.emit('server-log', { type, message, time: timestamp });
+            if (type === 'error') ioInstance.emit('error-msg', message);
+        }
     }
-}
-
-module.exports = { init, log };
+};

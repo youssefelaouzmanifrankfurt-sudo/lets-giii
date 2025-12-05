@@ -4,24 +4,24 @@ const logger = require('../utils/logger');
 
 const randomSleep = (min, max) => new Promise(r => setTimeout(r, Math.floor(Math.random() * (max - min + 1) + min)));
 
-// Helper zur Preis-Extraktion
-function parsePrice(item) {
-    try {
-        const whole = item.querySelector('.a-price-whole');
-        const fraction = item.querySelector('.a-price-fraction');
-        
-        if (whole && fraction) {
-            return whole.innerText.replace('.', '') + "," + fraction.innerText; 
-        } 
-        
-        const offscreen = item.querySelector('.a-price .a-offscreen');
-        if (offscreen) {
-            return offscreen.innerText.replace('€', '').replace('.', '').trim(); 
-        }
-    } catch (e) {
-        return "0";
-    }
-    return "0";
+// Menschliches Scrollen simulieren
+async function autoScroll(page) {
+    await page.evaluate(async () => {
+        await new Promise((resolve) => {
+            let totalHeight = 0;
+            const distance = 100;
+            const timer = setInterval(() => {
+                const scrollHeight = document.body.scrollHeight;
+                window.scrollBy(0, distance);
+                totalHeight += distance;
+
+                if (totalHeight >= scrollHeight - window.innerHeight || totalHeight > 4000) {
+                    clearInterval(timer);
+                    resolve();
+                }
+            }, 100);
+        });
+    });
 }
 
 async function searchAmazon(query, pageNum = 1) {
@@ -35,18 +35,24 @@ async function searchAmazon(query, pageNum = 1) {
     
     try {
         await page.setViewport({ width: 1366, height: 768 });
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
         
+        // Stealth Header
+        await page.setExtraHTTPHeaders({
+            'Accept-Language': 'de-DE,de;q=0.9,en-US;q=0.8,en;q=0.7'
+        });
+
         const searchUrl = `https://www.amazon.de/s?k=${encodeURIComponent(query)}&page=${pageNum}`;
-        await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        await page.goto(searchUrl, { waitUntil: 'networkidle2', timeout: 30000 });
         
-        // Cookie Banner wegklicken (Silent catch)
         try { 
             const cookieBtn = await page.waitForSelector('#sp-cc-accept', {timeout: 2000}); 
-            if(cookieBtn) await cookieBtn.click();
+            if(cookieBtn) {
+                await randomSleep(500, 1000);
+                await cookieBtn.click();
+            }
         } catch(e){}
 
-        await randomSleep(500, 1500); 
+        await randomSleep(1000, 2000); 
 
         const results = await page.evaluate(() => {
             const items = document.querySelectorAll('div[data-component-type="s-search-result"]');
@@ -58,7 +64,6 @@ async function searchAmazon(query, pageNum = 1) {
                     const linkEl = item.querySelector('div[data-cy="title-recipe"] a') || item.querySelector('h2 a');
                     const imgEl = item.querySelector('img.s-image');
                     
-                    // Preis Logik inline wiederverwendet (da evaluate keinen Zugriff auf externe functions hat)
                     let price = "0";
                     const whole = item.querySelector('.a-price-whole');
                     const fraction = item.querySelector('.a-price-fraction');
@@ -81,9 +86,7 @@ async function searchAmazon(query, pageNum = 1) {
                             source: 'Amazon'
                         });
                     }
-                } catch (err) {
-                    // Skip broken item
-                }
+                } catch (err) {}
             });
             return data;
         });
@@ -104,21 +107,21 @@ async function scrapeAmazonDetails(url) {
     
     try {
         await page.setViewport({ width: 1400, height: 900 });
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
         await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 });
-        await randomSleep(1500, 3000); 
+        
+        try { 
+            const cookieBtn = await page.waitForSelector('#sp-cc-accept', {timeout: 2000}); 
+            if(cookieBtn) await cookieBtn.click();
+        } catch(e){}
+
+        // WICHTIG: Runterscrollen für Bilder
+        await autoScroll(page);
+        await randomSleep(1000, 2000);
 
         // --- ENERGIELABEL SUCHE ---
         let energyLabelUrl = "Unbekannt";
         try {
-            const badgeSelectors = [
-                '.s-energy-efficiency-badge-standard', 
-                'svg[class*="energy-efficiency"]',
-                '#energyEfficiencyLabel_feature_div img', 
-                'a[href*="energy_efficiency"]'
-            ];
-            
+            const badgeSelectors = ['.s-energy-efficiency-badge-standard', 'svg[class*="energy-efficiency"]', '#energyEfficiencyLabel_feature_div img'];
             let badge = null;
             for (const sel of badgeSelectors) {
                 badge = await page.$(sel);
@@ -138,10 +141,7 @@ async function scrapeAmazonDetails(url) {
                     });
                 }
             }
-        } catch(e) {
-            // Warnung ist okay, nicht kritisch
-            // logger.log('warning', "Amazon E-Label Fehler: " + e.message);
-        }
+        } catch(e) {}
 
         const details = await page.evaluate((eLabel) => {
             const titleEl = document.querySelector('#productTitle');
@@ -159,13 +159,11 @@ async function scrapeAmazonDetails(url) {
                  if(pEl) price = pEl.innerText.replace('€','').replace('.', '').trim();
             }
 
-            // Bullet Points robuster sammeln
             const bullets = Array.from(document.querySelectorAll('#feature-bullets li span'))
                 .map(el => el.innerText.trim())
                 .filter(text => text.length > 0)
                 .join('\n');
             
-            // Bilder
             const images = [];
             const imgContainer = document.querySelector('#imgTagWrapperId img');
             if(imgContainer) {
@@ -180,7 +178,6 @@ async function scrapeAmazonDetails(url) {
                 }
             }
 
-            // Tech Specs
             const techData = [];
             document.querySelectorAll('#productDetails_techSpec_section_1 tr').forEach(r => {
                 const k = r.querySelector('th')?.innerText.trim();
@@ -196,7 +193,6 @@ async function scrapeAmazonDetails(url) {
             };
         }, energyLabelUrl);
 
-        // --- ENERGIELABEL EINFÜGEN ---
         if (details && energyLabelUrl !== "Unbekannt") {
             if (!details.images.includes(energyLabelUrl)) {
                 if (details.images.length > 0) {

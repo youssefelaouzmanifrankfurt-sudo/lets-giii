@@ -28,8 +28,8 @@ async function startSystem(io, port) {
     
     // 2. Datenbank Initialisieren (Ohne Global!)
     try {
-        const count = inventoryService.init().length;
-        logger.log('success', `📦 Datenbank geladen: ${count} Einträge.`);
+        const data = inventoryService.init();
+        logger.log('success', `📦 Datenbank geladen: ${data.length} Einträge.`);
     } catch (e) {
         logger.log('error', `Fehler beim DB Laden: ${e.message}`);
     }
