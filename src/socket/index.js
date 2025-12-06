@@ -56,7 +56,9 @@ module.exports = (io) => {
             });
 
             if (scannedItems) {
+                // Daten speichern über Service
                 const updatedList = inventoryService.syncWithScan(scannedItems);
+                
                 logger.log('success', 'DB Sync abgeschlossen. Sende Update.');
                 io.emit('update-db-list', updatedList);
             } else {
@@ -65,45 +67,26 @@ module.exports = (io) => {
             }
         });
 
-        // 4. RE-UPLOAD IMPLEMENTIERUNG
+        // 4. RE-UPLOAD IMPLEMENTIERUNG (Sauber & Sicher)
         socket.on('re-up-item', async ({ id }) => {
             logger.log('info', `🚀 Re-Up Request für ID: ${id}`);
             
             try {
-                const db = inventoryService.getAll();
-                const originalItem = db.find(i => i.id === id);
+                // 1. Logik: Draft erstellen (Service Call)
+                const result = inventoryService.createReUpDraft(id);
+                
+                // 2. State Update: Alle Clients informieren
+                io.emit('update-db-list', result.updatedList);
+                logger.log('success', `✅ Anzeige dupliziert (${result.newItem.id}). Öffne Browser...`);
+                
+                // 3. Side-Effect: Browser/Poster starten
+                poster.fillAdForm(result.newItem).catch(err => {
+                    logger.log('error', `Fehler im Poster-Prozess: ${err.message}`);
+                });
 
-                if (originalItem) {
-                    // Wir erstellen eine KOPIE als Draft
-                    const newId = 'DRAFT-' + Date.now();
-                    const newItem = {
-                        ...originalItem,
-                        id: newId,
-                        status: 'DRAFT',        // Wird gelb markiert
-                        active: false,
-                        views: 0,
-                        favorites: 0,
-                        uploadDate: new Date().toLocaleDateString('de-DE'),
-                    };
-
-                    // Zur DB hinzufügen
-                    inventoryService.add(newItem); // Nutze Service statt direktes Push
-                    
-                    // Bestätigung an alle Clients
-                    io.emit('update-db-list', inventoryService.getAll());
-                    logger.log('success', `✅ Anzeige dupliziert (${newId}). Öffne Browser...`);
-                    
-                    // Browser Formular öffnen
-                    // Wir warten nicht zwingend auf das Ergebnis, damit der Server nicht blockiert
-                    poster.fillAdForm(newItem).catch(err => {
-                        logger.log('error', `Fehler im Poster-Prozess: ${err.message}`);
-                    });
-
-                } else {
-                    logger.log('warning', `Re-Up fehlgeschlagen: Item ${id} nicht gefunden.`);
-                }
             } catch (error) {
                 logger.log('error', `Critical Error bei Re-Up: ${error.message}`);
+                socket.emit('server-error', { msg: 'Re-Up fehlgeschlagen: ' + error.message });
             }
         });
 

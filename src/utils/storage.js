@@ -2,19 +2,18 @@
 const fs = require('fs');
 const path = require('path');
 
-// Wir nutzen den Port zur Identifikation (definiert in den .bat Dateien)
+// --- KONFIGURATION ---
 // Port 3000 = IMMER Master (C: Laufwerk)
 // Andere Ports = IMMER Client (Z: Laufwerk)
 const PORT = process.env.PORT || 3000;
 const IS_MASTER = (String(PORT) === '3000');
 
-// Konfiguration der Pfade
+// Pfad-Konfiguration
 const SERVER_DATA_DIR = 'C:\\weeeeeee_data';
 const CLIENT_DATA_DIR = 'Z:\\'; 
 
 // Wähle den korrekten Pfad basierend auf der Rolle
 const ACTIVE_PATH = IS_MASTER ? SERVER_DATA_DIR : CLIENT_DATA_DIR;
-
 const MODE = IS_MASTER ? "SERVER (Master)" : "CLIENT (Worker)";
 
 console.log("------------------------------------------------");
@@ -22,81 +21,92 @@ console.log(`[STORAGE] Modus:       ${MODE}`);
 console.log(`[STORAGE] Speicherort: ${ACTIVE_PATH}`);
 console.log("------------------------------------------------");
 
-// Dateinamen
-const DB_PATH = path.join(ACTIVE_PATH, 'inventory.json');
-const HISTORY_PATH = path.join(ACTIVE_PATH, 'history.json');
-const STOCK_PATH = path.join(ACTIVE_PATH, 'stock.json');
-const TASKS_PATH = path.join(ACTIVE_PATH, 'tasks.json');
-const SETTINGS_PATH = path.join(ACTIVE_PATH, 'settings.json');
-const IMPORTS_PATH = path.join(ACTIVE_PATH, 'imported.json');
+// --- INTERNE HELFER ---
 
-// Helper: Initiale Datei erstellen (Nur Master darf schreiben wenn sie fehlt!)
-function ensureFile(filePath, defaultData = []) {
-    // Wenn wir Master sind, erstellen wir den Ordner falls er fehlt
+/**
+ * Stellt sicher, dass Datei und Ordner existieren.
+ * Master: Erstellt Ordner/Datei wenn nicht vorhanden.
+ * Client: Wartet/Liest nur.
+ */
+function ensureFile(filename, defaultData = []) {
+    const filePath = path.join(ACTIVE_PATH, filename);
+
+    // 1. Ordner erstellen (nur Master)
     if (IS_MASTER && !fs.existsSync(ACTIVE_PATH)) {
         try { fs.mkdirSync(ACTIVE_PATH, { recursive: true }); } catch(e) {}
     }
 
+    // 2. Datei prüfen
     if (!fs.existsSync(filePath)) {
         if (IS_MASTER) {
-            // Master erstellt die leere Datei
             try {
                 fs.writeFileSync(filePath, JSON.stringify(defaultData, null, 2));
             } catch (e) {
-                console.error("[STORAGE] Fehler beim Erstellen von " + filePath, e.message);
+                console.error(`[STORAGE] Fehler beim Erstellen von ${filename}: ${e.message}`);
             }
         } else {
-            // Client wartet (darf nicht erstellen, um Konflikte zu vermeiden)
-            console.warn(`[STORAGE] Warte auf Master-DB: ${filePath} nicht gefunden.`);
+            console.warn(`[STORAGE] Warte auf Master-DB: ${filename} nicht gefunden.`);
             return defaultData; 
         }
     }
     
+    // 3. Lesen
     try {
         const data = fs.readFileSync(filePath, 'utf8');
         return data ? JSON.parse(data) : defaultData;
     } catch (e) {
-        console.error("[STORAGE] Lesefehler: " + filePath, e.message);
+        console.error(`[STORAGE] Lesefehler bei ${filename}: ${e.message}`);
         return defaultData;
     }
 }
 
-function saveFile(filePath, data) {
+/**
+ * Speichert Daten in Datei.
+ */
+function saveFile(filename, data) {
+    const filePath = path.join(ACTIVE_PATH, filename);
     try {
-        // Backup Logic (nur Master macht Backups, ca. bei jedem 20. Speichern)
+        // Backup Logic (nur Master, ca. 5% Chance)
         if (IS_MASTER && Math.random() > 0.95) {
-            fs.copyFileSync(filePath, filePath + '.bak');
+            try { fs.copyFileSync(filePath, filePath + '.bak'); } catch(e) {}
         }
         fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
         return true;
     } catch (e) {
-        console.error("[STORAGE] Schreibfehler: " + filePath, e.message);
+        console.error(`[STORAGE] Schreibfehler bei ${filename}: ${e.message}`);
         return false;
     }
 }
 
 // --- PUBLIC API ---
 
-module.exports = {
-    getDbPath: () => DB_PATH,
+const api = {
+    // Basis-Infos
+    getDbPath: () => path.join(ACTIVE_PATH, 'inventory.json'),
     getDataDir: () => ACTIVE_PATH,
 
-    // Datenbanken laden
-    loadDB: () => ensureFile(DB_PATH),
-    saveDB: (data) => saveFile(DB_PATH, data),
+    // --- NEUE GENERISCHE API (Besser für Erweiterungen) ---
+    readJSON: (filename, defaultVal = []) => ensureFile(filename, defaultVal),
+    writeJSON: (filename, data) => saveFile(filename, data),
 
-    loadHistory: () => ensureFile(HISTORY_PATH),
-    saveHistory: (data) => saveFile(HISTORY_PATH, data),
+    // --- LEGACY API (Kompatibilität) ---
+    loadDB: () => api.readJSON('inventory.json'),
+    saveDB: (data) => api.writeJSON('inventory.json', data),
 
-    loadStock: () => ensureFile(STOCK_PATH),
-    saveStock: (data) => saveFile(STOCK_PATH, data),
+    loadHistory: () => api.readJSON('history.json'),
+    saveHistory: (data) => api.writeJSON('history.json', data),
 
-    loadTasks: () => ensureFile(TASKS_PATH),
-    saveTasks: (data) => saveFile(TASKS_PATH, data),
+    loadStock: () => api.readJSON('stock.json'),
+    saveStock: (data) => api.writeJSON('stock.json', data),
 
-    loadSettings: () => ensureFile(SETTINGS_PATH, {}),
-    saveSettings: (data) => saveFile(SETTINGS_PATH, data),
+    loadTasks: () => api.readJSON('tasks.json'),
+    saveTasks: (data) => api.writeJSON('tasks.json', data),
+
+    loadSettings: () => api.readJSON('settings.json', {}),
+    saveSettings: (data) => api.writeJSON('settings.json', data),
     
-    loadExternal: () => ensureFile(IMPORTS_PATH),
-    saveExternal: (data) => saveFile(IMPORTS_PATH, data)
+    loadExternal: () => api.readJSON('imported.json'),
+    saveExternal: (data) => api.writeJSON('imported.json', data)
 };
+
+module.exports = api;
