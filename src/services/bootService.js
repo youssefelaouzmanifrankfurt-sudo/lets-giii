@@ -8,7 +8,7 @@ const chatMonitor = require('../scrapers/chat/monitor');
 const { connectToBrowser } = require('../scrapers/chat/connection');
 const startAutoScan = require('../jobs/scheduler');
 
-// WICHTIG: Wir nutzen jetzt den Service statt globale Variablen
+// Greift auf den Index zu, der Store & Actions bündelt
 const inventoryService = require('./inventoryService'); 
 
 async function startSystem(io, port) {
@@ -18,23 +18,28 @@ async function startSystem(io, port) {
 
     // 1. Ordner Struktur sicherstellen
     if (!fs.existsSync('uploads')) fs.mkdirSync('uploads');
+    
+    // WICHTIG: Log-Ordner erstellen, damit der Logger schreiben kann
+    if (!fs.existsSync('logs')) {
+        try { fs.mkdirSync('logs'); } catch(e) { console.error("Kann Log-Ordner nicht erstellen:", e); }
+    }
 
     if (IS_MAIN_SERVER) {
-        const serverPath = 'C:\\weeeeeee_data'; // Original Pfadlogik
+        const serverPath = 'C:\\weeeeeee_data'; 
         if (!fs.existsSync(serverPath)) {
             try { fs.mkdirSync(serverPath, { recursive: true }); } catch(e) {}
         }
     }
     
-    // 2. Datenbank Initialisieren (Ohne Global!)
+    // 2. Datenbank Initialisieren (Lädt Daten in den Speicher)
     try {
-        const data = inventoryService.init();
+        const data = inventoryService.init(); 
         logger.log('success', `📦 Datenbank geladen: ${data.length} Einträge.`);
     } catch (e) {
         logger.log('error', `Fehler beim DB Laden: ${e.message}`);
     }
 
-    // 3. Datei-Überwachung (Watcher) starten
+    // 3. Datei-Überwachung starten (für Hot-Reload)
     setupFileWatcher(io);
 
     // 4. Externe Dienste starten
@@ -73,7 +78,7 @@ function setupFileWatcher(io) {
                 
                 logger.log('info', '📂 Änderung an inventory.json erkannt. Lade neu...');
                 
-                // Hier laden wir über den Service neu, statt global zu setzen
+                // Lädt Daten neu in den Cache
                 const newData = inventoryService.reload();
                 
                 if(newData) { 

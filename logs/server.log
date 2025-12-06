@@ -1,0 +1,43 @@
+[6.12.2025 01:18:35] [INFO] 🚀 System-Boot eingeleitet...
+[6.12.2025 01:18:35] [SUCCESS] 📦 Datenbank geladen: 726 Einträge.
+[6.12.2025 01:18:35] [INFO] 🌍 Verbinde mit Browser...
+[6.12.2025 01:18:39] [INFO] 👀 Chat-Monitor: Aktiviert (Selbstheilender Modus)
+[6.12.2025 01:18:39] [INFO] 👀 Chat-Monitor aktiv (Hintergrund-Modus).
+[6.12.2025 01:18:39] [SUCCESS] ✅ SYSTEM BEREIT auf Port 3000
+[6.12.2025 01:18:39] [SUCCESS] System Boot abgeschlossen.
+[6.12.2025 01:18:54] [INFO] Client verbunden: l7V3yhvYFLlgUdMqAAAC
+[6.12.2025 01:18:54] [INFO] Client verbunden: ol3hTGVss6uweW7ZAAAD
+[6.12.2025 01:19:03] [INFO] Client verbunden: rui0vpChP1X5KgFOAAAG
+[6.12.2025 01:19:03] [INFO] Client verbunden: QYYrlD1Je8hWuMnSAAAH
+[6.12.2025 01:19:21] [INFO] Client verbunden: 2WmUQ-xkp2RC03JtAAAJ
+[6.12.2025 01:19:22] [INFO] Client verbunden: 8BT4pkIGiS801u8FAAAM
+[6.12.2025 01:19:22] [INFO] Client verbunden: JY2yFTMUCodaLL3JAAAN
+[6.12.2025 01:19:26] [INFO] Client verbunden: jRKpMXsck4xtuXPpAAAQ
+[6.12.2025 01:19:26] [INFO] Client verbunden: _Bwnj2nlEOPMFMKvAAAR
+[6.12.2025 01:19:34] [INFO] Client verbunden: Fbz_AFePnpb3-gkaAAAT
+[6.12.2025 01:19:39] [INFO] Starte manuellen DB-Scan...
+[6.12.2025 01:19:40] [INFO] 🚀 Scan Start (Auto-Retry aktiv)...
+[6.12.2025 01:19:42] [ERROR] ❌ Scan abgebrochen: Nicht eingeloggt!
+[6.12.2025 01:19:42] [ERROR] DB Scan fehlgeschlagen.
+[6.12.2025 01:19:45] [INFO] Client verbunden: k_v5Z3dg-b-vvIELAAAW
+[6.12.2025 01:19:45] [INFO] Client verbunden: fFlWUjmL-uSWSqOyAAAX
+[6.12.2025 01:19:48] [INFO] Starte manuellen DB-Scan...
+[6.12.2025 01:19:48] [INFO] 🚀 Scan Start (Auto-Retry aktiv)...
+[6.12.2025 01:19:50] [ERROR] ❌ Scan abgebrochen: Nicht eingeloggt!
+[6.12.2025 01:19:50] [ERROR] DB Scan fehlgeschlagen.
+[6.12.2025 01:19:59] [INFO] Client verbunden: SQmvoSXTQvVYsZcvAAAa
+[6.12.2025 01:19:59] [INFO] Client verbunden: iL0tQ-vnV5dplCOEAAAb
+[6.12.2025 01:20:02] [ERROR] Chat-Liste Fehler: Protocol error (Runtime.callFunctionOn): Target closed
+[6.12.2025 01:20:02] [ERROR] Chat-Liste Fehler: Protocol error (Runtime.callFunctionOn): Target closed
+[6.12.2025 01:20:03] [INFO] Browser Modus gewechselt.
+[6.12.2025 01:20:09] [SUCCESS] 📩 NEUE NACHRICHT EMPFANGEN!
+[6.12.2025 01:20:14] [INFO] Client verbunden: sfysSECAHrPZ6UGIAAAe
+[6.12.2025 01:20:14] [INFO] Client verbunden: TPxhQAQ0nSAcREhLAAAf
+[6.12.2025 01:20:15] [SUCCESS] 📩 NEUE NACHRICHT EMPFANGEN!
+[6.12.2025 01:20:16] [INFO] Starte manuellen DB-Scan...
+[6.12.2025 01:20:18] [INFO] 🚀 Scan Start (Auto-Retry aktiv)...
+[6.12.2025 01:20:21] [INFO] 📄 Scanne Seite 1...
+[6.12.2025 01:20:21] [INFO] ⚡ Deep-Scan: 6 Anzeigen in Queue.
+[6.12.2025 01:20:39] [INFO] 📄 Scanne Seite 2...
+[6.12.2025 01:20:45] [INFO] 📄 Scanne Seite 3...
+[6.12.2025 01:20:45] [WARN] Fehler beim Lesen, versuche Reload...

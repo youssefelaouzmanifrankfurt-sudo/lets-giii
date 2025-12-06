@@ -2,7 +2,7 @@
 const store = require('./store');
 const sync = require('./sync');
 const actions = require('./actions');
-const storage = require('../../utils/storage'); // Zugriff auf Storage Utils
+const storage = require('../../utils/storage'); 
 
 module.exports = {
     // --- Core Data Access ---
@@ -11,20 +11,16 @@ module.exports = {
     delete: store.deleteItem,
     replaceAll: store.replaceAll,
 
-    // --- Neue Methoden für Socket & Boot (Global Replacement) ---
+    // --- Methoden für Boot & Socket ---
     
-    /**
-     * Lädt die Datenbank initial (für BootService)
-     */
+    // Lädt DB von Festplatte in den RAM-Cache (beim Start)
     init: () => {
         const data = storage.loadDB() || [];
-        store.replaceAll(data); // Store mit Daten füllen
+        store.replaceAll(data);
         return data;
     },
 
-    /**
-     * Erzwingt ein Neuladen von der Festplatte (für FileWatcher)
-     */
+    // Erzwingt Neuladen von Festplatte (beim File-Watcher Event)
     reload: () => {
         const newData = storage.loadDB();
         if (newData) {
@@ -34,9 +30,7 @@ module.exports = {
         return store.getAll();
     },
 
-    /**
-     * Fügt ein einzelnes Item hinzu (für Re-Upload Feature)
-     */
+    // Fügt Item hinzu und speichert sofort (für Re-Upload)
     add: (item) => {
         const currentList = store.getAll();
         currentList.push(item);
