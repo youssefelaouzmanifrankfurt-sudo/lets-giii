@@ -85,11 +85,11 @@ const api = {
     getDbPath: () => path.join(ACTIVE_PATH, 'inventory.json'),
     getDataDir: () => ACTIVE_PATH,
 
-    // --- NEUE GENERISCHE API (Besser für Erweiterungen) ---
+    // --- NEUE GENERISCHE API (Modern & Flexibel) ---
     readJSON: (filename, defaultVal = []) => ensureFile(filename, defaultVal),
     writeJSON: (filename, data) => saveFile(filename, data),
 
-    // --- LEGACY API (Kompatibilität) ---
+    // --- LEGACY API (Damit alter Code nicht crasht) ---
     loadDB: () => api.readJSON('inventory.json'),
     saveDB: (data) => api.writeJSON('inventory.json', data),
 

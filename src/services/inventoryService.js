@@ -1,6 +1,6 @@
 // src/services/inventoryService.js
 const storage = require('../utils/storage');
-const logger = require('../utils/logger'); // Optional, falls Logger verfügbar
+const dbScraper = require('../scrapers/dbScraper'); // Service kontrolliert jetzt den Scraper
 
 const FILE_NAME = 'inventory.json';
 
@@ -12,34 +12,26 @@ class InventoryService {
      */
     async init() {
         try {
-            // Wir laden die Daten einmal testweise, um sicherzugehen, dass alles passt.
+            // Test-Laden um sicherzugehen, dass Zugriff da ist
             const items = this.getAll();
-            console.log(`[InventoryService] Initialisiert. ${items.length} Artikel im Speicher.`);
+            console.log(`[InventoryService] Initialisiert. ${items.length} Artikel geladen.`);
             return true;
         } catch (e) {
-            console.error('[InventoryService] Init fehlgeschlagen:', e.message);
-            // Wir werfen den Fehler nicht weiter, damit der Server oben bleibt (Soft-Fail)
+            console.error('[InventoryService] Init Fehler:', e.message);
             return false; 
         }
     }
 
-    /**
-     * Lädt alle Inventar-Items.
-     */
+    // --- STANDARD CRUD (Datenbank-Operationen) ---
+
     getAll() {
         return storage.readJSON(FILE_NAME, []);
     }
 
-    /**
-     * Speichert die gesamte Liste.
-     */
     saveAll(items) {
         return storage.writeJSON(FILE_NAME, items);
     }
 
-    /**
-     * Fügt ein einzelnes Item hinzu und speichert.
-     */
     add(item) {
         const items = this.getAll();
         items.push(item);
@@ -47,9 +39,6 @@ class InventoryService {
         return items;
     }
 
-    /**
-     * Löscht ein Item anhand der ID.
-     */
     delete(id) {
         let items = this.getAll();
         const initialLength = items.length;
@@ -62,19 +51,34 @@ class InventoryService {
         return false;
     }
 
+    // --- KOMPLEXE LOGIK (Geschäftsfälle) ---
+
     /**
-     * Synchronisiert Scanner-Ergebnisse mit der Datenbank.
+     * Führt den kompletten Scan-Prozess durch.
+     * Kapselt die Scraper-Logik komplett vom Socket ab.
+     * @param {Function} onProgress - Callback (current, total)
      */
-    syncWithScan(scannedItems) {
-        if (!Array.isArray(scannedItems)) return this.getAll();
-        // Einfacher Overwrite/Update
-        this.saveAll(scannedItems);
-        return scannedItems;
+    async performFullScan(onProgress) {
+        const currentDB = this.getAll();
+
+        // 1. Scraper ausführen
+        const scannedItems = await dbScraper.scrapeMyAds(currentDB, (current, total) => {
+            // Daten normalisieren für UI
+            const safeTotal = (typeof total === 'number') ? total : 100;
+            if (onProgress) onProgress(current, safeTotal);
+        });
+
+        // 2. Ergebnis verarbeiten
+        if (scannedItems && Array.isArray(scannedItems)) {
+            this.saveAll(scannedItems); // Wir speichern das Ergebnis direkt
+            return scannedItems;
+        } else {
+            throw new Error("Scan lieferte keine gültigen Daten.");
+        }
     }
 
     /**
-     * Kern-Logik für "Re-Up" (Duplizieren einer Anzeige).
-     * Erstellt einen Draft basierend auf einem existierenden Item.
+     * Erstellt eine Kopie eines Artikels (Re-Upload Vorbereitung).
      */
     createReUpDraft(originalId) {
         const items = this.getAll();
@@ -84,7 +88,7 @@ class InventoryService {
             throw new Error(`Item mit ID ${originalId} nicht gefunden.`);
         }
 
-        // Kopie erstellen
+        // Kopie erstellen mit neuen Metadaten
         const newId = 'DRAFT-' + Date.now();
         const newItem = {
             ...originalItem,
@@ -96,7 +100,6 @@ class InventoryService {
             uploadDate: new Date().toLocaleDateString('de-DE'),
         };
 
-        // Speichern
         this.add(newItem);
 
         return {
@@ -106,5 +109,5 @@ class InventoryService {
     }
 }
 
-// Exportiere eine Instanz der Klasse (Singleton Pattern)
+// Singleton Export
 module.exports = new InventoryService();

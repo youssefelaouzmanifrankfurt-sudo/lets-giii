@@ -4,8 +4,7 @@ const taskHandler = require('./taskHandler');
 const trackingHandler = require('./trackingHandler');
 const settingsHandler = require('./settingsHandler');
 
-// Scraper & Poster Import
-const dbScraper = require('../scrapers/dbScraper');
+// Poster bleibt hier, da es eine UI-Automation ist (Browser öffnen am Client/Server)
 const poster = require('../scrapers/poster');
 
 // Modulare Handler
@@ -13,6 +12,7 @@ const externalHandler = require('./external');
 const stockHandler = require('./stock'); 
 
 const logger = require('../utils/logger');
+// Nur noch der Service wird importiert, keine Scraper-Tools mehr!
 const inventoryService = require('../services/inventoryService'); 
 
 module.exports = (io) => {
@@ -45,48 +45,45 @@ module.exports = (io) => {
              io.emit('update-db-list', inventoryService.getAll());
         });
 
-        // 3. Scan Starten
+        // 3. Scan Starten (Delegiert an Service)
         socket.on('start-db-scrape', async () => {
-            logger.log('info', 'Starte manuellen DB-Scan...');
-            const currentDB = inventoryService.getAll();
+            logger.log('info', 'Starte manuellen DB-Scan via Service...');
+            
+            try {
+                // Service übernimmt die Arbeit und meldet Progress via Callback
+                const updatedList = await inventoryService.performFullScan((current, total) => {
+                    socket.emit('scrape-progress', { current, total });
+                });
 
-            const scannedItems = await dbScraper.scrapeMyAds(currentDB, (current, total) => {
-                let t = (typeof total === 'number') ? total : 100;
-                socket.emit('scrape-progress', { current, total: t });
-            });
-
-            if (scannedItems) {
-                // Daten speichern über Service
-                const updatedList = inventoryService.syncWithScan(scannedItems);
-                
-                logger.log('success', 'DB Sync abgeschlossen. Sende Update.');
+                logger.log('success', 'DB Scan erfolgreich. Sende Update.');
                 io.emit('update-db-list', updatedList);
-            } else {
+
+            } catch (err) {
+                logger.log('error', `DB Scan fehlgeschlagen: ${err.message}`);
                 socket.emit('scrape-progress', { error: true });
-                logger.log('error', 'DB Scan fehlgeschlagen.');
             }
         });
 
-        // 4. RE-UPLOAD IMPLEMENTIERUNG (Sauber & Sicher)
+        // 4. Re-Up Item (Delegiert an Service)
         socket.on('re-up-item', async ({ id }) => {
             logger.log('info', `🚀 Re-Up Request für ID: ${id}`);
             
             try {
-                // 1. Logik: Draft erstellen (Service Call)
+                // Daten-Logik im Service
                 const result = inventoryService.createReUpDraft(id);
                 
-                // 2. State Update: Alle Clients informieren
+                // Update an alle
                 io.emit('update-db-list', result.updatedList);
-                logger.log('success', `✅ Anzeige dupliziert (${result.newItem.id}). Öffne Browser...`);
+                logger.log('success', `✅ Anzeige dupliziert (${result.newItem.id}).`);
                 
-                // 3. Side-Effect: Browser/Poster starten
+                // UI-Aktion (Browser öffnen)
                 poster.fillAdForm(result.newItem).catch(err => {
-                    logger.log('error', `Fehler im Poster-Prozess: ${err.message}`);
+                    logger.log('error', `Fehler beim Öffnen des Formulars: ${err.message}`);
                 });
 
             } catch (error) {
-                logger.log('error', `Critical Error bei Re-Up: ${error.message}`);
-                socket.emit('server-error', { msg: 'Re-Up fehlgeschlagen: ' + error.message });
+                logger.log('error', `Re-Up Fehler: ${error.message}`);
+                socket.emit('server-error', { msg: error.message });
             }
         });
 
@@ -99,7 +96,7 @@ module.exports = (io) => {
         socket.on('stop-scraper', () => logger.log('warning', 'Bot Stop'));
         
         socket.on('disconnect', () => {
-            // Optional: Cleanup logic
+            // Cleanup
         });
     });
 };
